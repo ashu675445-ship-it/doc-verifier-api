@@ -10,58 +10,115 @@ import numpy as np
 
 app = FastAPI()
 
-# Definite Blacklisted Tools (Editing/Tampering Software)
 STRICT_BLACKLIST = [
     "photoshop", "illustrator", "canva", "gimp", "ilovepdf", "sejda", 
     "pdfescape", "smallpdf", "coreldraw", "inkscape", "pixlr", "paint",
     "pdf2go", "sodapdf", "foxit phantom", "nitro pro", "wondershare"
 ]
 
-# Known Govt & Enterprise Trusted Engines
-TRUSTED_ISSUERS = {
-    "DigiLocker": ["digilocker", "meity", "national e-governance"],
-    "UIDAI (Aadhaar)": ["uidai", "aadhaar", "cdac"],
-    "Income Tax / NSDL (PAN)": ["protean", "nsdl", "utiitsl", "income tax department"],
-    "Indian Banks": ["itext", "jasperreports", "apache fop", "oracle", "birt", "quartz", "skia", "wkhtmltopdf", "cups"]
-}
-
 class DocPayload(BaseModel):
     fileName: str
     mimeType: str
     base64File: str
+    password: str = ""
 
 @app.get("/")
 def home():
-    return {"status": "Universal Forensic Classifier & Verifier is Live!"}
+    return {"status": "Advanced Cognitive Forensic API is Live!"}
 
-def classify_document(text_content):
-    """Document ke text patterns se identify karta hai ki document kya hai."""
+def classify_document_advanced(text_content):
+    """
+    Weighted Context Scoring:
+    Ab single PAN number dekhkar confuse nahi hoga. Pure document ka weight count karega.
+    """
     text = text_content.upper()
     
-    # 1. PAN Card Check
-    if "INCOME TAX DEPARTMENT" in text or "PERMANENT ACCOUNT NUMBER" in text or re.search(r'[A-Z]{5}[0-9]{4}[A-Z]', text):
-        pan_match = re.search(r'[A-Z]{5}[0-9]{4}[A-Z]', text)
-        pan_num = pan_match.group(0) if pan_match else "Not Extracted"
-        return {
-            "type": "PAN Card (Identity Document)",
-            "authority": "Income Tax Department (Govt of India)",
-            "identifier": pan_num,
-            "format_valid": bool(pan_match)
-        }
+    # 1. Bank Statement Scoring Signals
+    bank_score = 0
+    bank_keywords = [
+        "STATEMENT OF ACCOUNT", "ACCOUNT STATEMENT", "AVAILABLE BALANCE", 
+        "CLOSING BALANCE", "OPENING BALANCE", "TRANSACTION DETAILS", 
+        "DEBIT", "CREDIT", "WITHDRAWAL", "DEPOSIT", "CHEQUE NO", 
+        "VALUE DATE", "TXN DATE", "SAVINGS ACCOUNT", "CURRENT ACCOUNT", 
+        "IFSC", "MICR", "BRANCH CODE", "ACCOUNT NUMBER", "A/C NO"
+    ]
+    for kw in bank_keywords:
+        if kw in text:
+            bank_score += 10
+            
+    # Indian Banks Name Matching
+    bank_names = [
+        "HDFC BANK", "STATE BANK OF INDIA", "SBI", "ICICI BANK", 
+        "AXIS BANK", "PUNJAB NATIONAL BANK", "PNB", "KOTAK MAHINDRA", 
+        "BANK OF BARODA", "CANARA BANK", "UNION BANK", "INDUSIND"
+    ]
+    matched_bank = None
+    for b in bank_names:
+        if b in text:
+            bank_score += 25
+            matched_bank = b
+            break
 
-    # 2. Aadhaar Card Check
-    elif "UIDAI" in text or "UNIQUE IDENTIFICATION AUTHORITY" in text or "AADHAAR" in text or "MERA AADHAAR" in text:
-        aadhaar_match = re.search(r'\b\d{4}\s\d{4}\s\d{4}\b', text)
+    # Transaction regex check (Numbers with balance pattern e.g. 12,450.00)
+    financial_numbers = len(re.findall(r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})\b', text))
+    if financial_numbers > 8:
+        bank_score += 30
+
+    # 2. PAN Card Scoring Signals
+    pan_score = 0
+    pan_match = re.search(r'\b[A-Z]{5}[0-9]{4}[A-Z]\b', text)
+    if "INCOME TAX DEPARTMENT" in text:
+        pan_score += 50
+    if "PERMANENT ACCOUNT NUMBER" in text or "GOVT. OF INDIA" in text:
+        pan_score += 30
+    if "FATHER'S NAME" in text or "DATE OF BIRTH" in text:
+        pan_score += 15
+    if pan_match and bank_score < 20: # Sirf tab count hoga jab bank indicators na ho
+        pan_score += 25
+
+    # 3. Aadhaar Scoring Signals
+    aadhaar_score = 0
+    aadhaar_match = re.search(r'\b\d{4}\s\d{4}\s\d{4}\b', text)
+    if "UIDAI" in text or "UNIQUE IDENTIFICATION" in text:
+        aadhaar_score += 60
+    if "MERA AADHAAR" in text or "ENROLMENT NO" in text:
+        aadhaar_score += 30
+    if aadhaar_match:
+        aadhaar_score += 20
+
+    # --- FINAL DECISION ARBITRATION ---
+    
+    # Priority 1: Bank Statement (Agar ledger transaction data hai toh bank hi hoga)
+    if bank_score >= 30:
+        bank_label = matched_bank if matched_bank else "Indian Commercial Bank"
         return {
-            "type": "Aadhaar Card (UIDAI)",
-            "authority": "Unique Identification Authority of India (UIDAI)",
-            "identifier": aadhaar_match.group(0) if aadhaar_match else "Masked/Extracted",
+            "type": f"{bank_label} Statement",
+            "authority": "Reserve Bank of India (Regulated Bank)",
+            "identifier": f"Active Ledger ({financial_numbers} transactions parsed)",
             "format_valid": True
         }
 
-    # 3. Passport
+    # Priority 2: Genuine PAN Card Document
+    elif pan_score >= 40 and pan_match:
+        return {
+            "type": "PAN Card (Identity Document)",
+            "authority": "Income Tax Department (Govt of India)",
+            "identifier": pan_match.group(0),
+            "format_valid": True
+        }
+
+    # Priority 3: Aadhaar Card
+    elif aadhaar_score >= 35:
+        return {
+            "type": "Aadhaar Card (UIDAI)",
+            "authority": "Unique Identification Authority of India (UIDAI)",
+            "identifier": aadhaar_match.group(0) if aadhaar_match else "Masked/Verified",
+            "format_valid": True
+        }
+
+    # Priority 4: Indian Passport
     elif "REPUBLIC OF INDIA" in text and "PASSPORT" in text:
-        pass_match = re.search(r'[A-Z]{1}[0-9]{7}', text)
+        pass_match = re.search(r'\b[A-Z]{1}[0-9]{7}\b', text)
         return {
             "type": "Indian Passport",
             "authority": "Ministry of External Affairs, India",
@@ -69,41 +126,10 @@ def classify_document(text_content):
             "format_valid": bool(pass_match)
         }
 
-    # 4. Driving License
-    elif "DRIVING LICENCE" in text or "UNION OF INDIA DRIVING" in text or "SARATHI" in text:
-        return {
-            "type": "Driving Licence (MoRTH)",
-            "authority": "Ministry of Road Transport and Highways (Sarathi)",
-            "identifier": "License Document",
-            "format_valid": True
-        }
-
-    # 5. Bank Statement
-    elif any(bank in text for bank in ["HDFC", "STATE BANK OF INDIA", "SBI", "ICICI", "AXIS BANK", "PUNJAB NATIONAL BANK", "ACCOUNT STATEMENT"]):
-        bank_name = "Indian Banking System"
-        for b in ["HDFC", "SBI", "STATE BANK OF INDIA", "ICICI", "AXIS BANK", "PNB"]:
-            if b in text:
-                bank_name = b
-                break
-        return {
-            "type": f"{bank_name} Account Statement",
-            "authority": "Reserve Bank of India (Regulated Bank)",
-            "identifier": "Financial Ledger",
-            "format_valid": True
-        }
-
-    # 6. Salary Slip / Invoice
-    elif "PAYSLIP" in text or "SALARY SLIP" in text or "TAX INVOICE" in text:
-        return {
-            "type": "Commercial / Payroll Document",
-            "authority": "Corporate Entity / Employer",
-            "identifier": "Invoice/Payslip",
-            "format_valid": True
-        }
-
+    # Fallback
     return {
-        "type": "General Certificate / Unclassified Document",
-        "authority": "Unknown External Entity",
+        "type": "General Financial / Enterprise Document",
+        "authority": "Independent Issuer",
         "identifier": "N/A",
         "format_valid": True
     }
@@ -131,9 +157,8 @@ def detect_pixel_patch_tamper(image_bytes):
             mean_peak = np.mean(peaks)
             max_peak = np.max(peaks)
             ratio = max_peak / (mean_peak + 1e-5)
-            
-            if ratio > 8.0 and max_peak > 35:
-                flags.append("Local Inconsistency: Specific field/text area exhibits irregular compression (Cut-Paste / Re-typed).")
+            if ratio > 8.5 and max_peak > 35:
+                flags.append("Local Compression Mismatch: Specific text/number area re-compressed separately (Cut/Paste).")
     except Exception:
         pass
     return flags
@@ -146,73 +171,92 @@ def verify_document(payload: DocPayload):
     flags = []
     is_suspicious = False
     extracted_text = ""
-    metadata_info = {}
-    
+    deep_forensics = {}
+
     raw_stream = file_bytes.decode('latin1', errors='ignore').lower()
 
-    # Rule 1: Deep Binary Signature Scan for Tampering Tools
+    # Tool checks
     for tool in STRICT_BLACKLIST:
         if tool in raw_stream:
             flags.append(f"Editor Footprint Detected: Created or exported using '{tool.upper()}'.")
             is_suspicious = True
 
-    # Rule 2: Adobe XMP Lifecycle Logs
     if "xmpmm:history" in raw_stream or "stevt:action" in raw_stream:
         flags.append("Active Adobe Edit Stack: Internal XMP history reveals multiple manual modification sessions.")
         is_suspicious = True
 
-    # PDF Processing
     if is_pdf:
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
-            meta = doc.metadata or {}
-            metadata_info["producer"] = meta.get("producer") or "Not Declared"
-            metadata_info["creator"] = meta.get("creator") or "Not Declared"
-            metadata_info["pages"] = len(doc)
 
+            # Password & Encryption Handling
+            if doc.is_encrypted:
+                if not payload.password:
+                    return {
+                        "is_encrypted": True,
+                        "message": "Document is password protected. Please enter password.",
+                        "fileName": payload.fileName
+                    }
+                auth_success = doc.authenticate(payload.password)
+                if not auth_success:
+                    return {
+                        "is_encrypted": True,
+                        "wrong_password": True,
+                        "message": "Incorrect password. Verification aborted.",
+                        "fileName": payload.fileName
+                    }
+
+            meta = doc.metadata or {}
+            deep_forensics["pdf_producer"] = meta.get("producer") or "Not Declared"
+            deep_forensics["creator_app"] = meta.get("creator") or "Not Declared"
+            deep_forensics["creation_date"] = meta.get("creationDate") or "Unknown"
+            deep_forensics["modification_date"] = meta.get("modDate") or "Unknown"
+            deep_forensics["page_count"] = len(doc)
+            deep_forensics["pdf_format"] = f"v{meta.get('format', '1.4')}"
+            deep_forensics["is_encrypted"] = "Yes (Password Protected / Decrypted)" if doc.is_encrypted else "No (Standard)"
+
+            total_fonts = []
+            image_count = 0
             for page in doc:
                 extracted_text += page.get_text() + " "
+                total_fonts.extend([f[3] for f in page.get_fonts()])
+                image_count += len(page.get_images())
 
-            # Check if official doc is flattened into a dumb image
-            if len(extracted_text.strip()) < 40 and len(doc) > 0:
-                first_page = doc.load_page(0)
-                if len(first_page.get_images()) >= 1:
-                    flags.append("Flattened Image Structure: Official document has zero readable text layer (Pura image layer me convert kiya gaya hai).")
-                    is_suspicious = True
+            deep_forensics["unique_fonts"] = ", ".join(list(set(total_fonts))[:4]) or "Standard Raster"
+            deep_forensics["embedded_images"] = image_count
 
-            # Micro pixel check on first page
+            # Flattened scan detection
+            if len(extracted_text.strip()) < 40 and len(doc) > 0 and image_count >= 1:
+                flags.append("Flattened Image Warning: Bank document text layer removed (Converted into a flat raster).")
+                is_suspicious = True
+
             if len(doc) > 0:
                 pix = doc.load_page(0).get_pixmap(dpi=150)
                 flags.extend(detect_pixel_patch_tamper(pix.tobytes("jpeg")))
 
         except Exception as e:
-            flags.append(f"PDF Parsing Exception: {str(e)}")
+            flags.append(f"PDF Decryption or Syntax Error: {str(e)}")
             is_suspicious = True
     else:
-        # Image Processing (JPG/PNG)
         flags.extend(detect_pixel_patch_tamper(file_bytes))
-        metadata_info["producer"] = "Digital Image / Scan"
-        metadata_info["creator"] = "Graphic File"
-        metadata_info["pages"] = 1
+        deep_forensics["pdf_producer"] = "Digital Image / Camera"
+        deep_forensics["creator_app"] = "Flat Graphic File"
+        deep_forensics["page_count"] = 1
+        deep_forensics["is_encrypted"] = "No (Raw Image)"
 
     if len(flags) > 0:
         is_suspicious = True
 
-    # Classify Document
-    classification = classify_document(extracted_text)
-
-    # Specific Sanity Checks per Document
-    if classification["type"].startswith("PAN Card") and not classification["format_valid"]:
-        flags.append("PAN Format Failure: Text contains PAN header but alphanumeric pattern is invalid.")
-        is_suspicious = True
-
+    # Advance Cognitive Classification Call
+    classification = classify_document_advanced(extracted_text)
     unique_flags = list(set(flags))
 
     return {
+        "is_encrypted": False,
         "fileName": payload.fileName,
         "is_suspicious": is_suspicious,
         "verdict": "TAMPERED / FORGED" if is_suspicious else "GENUINE / VERIFIED",
         "classification": classification,
         "flags": unique_flags,
-        "metadata": metadata_info
+        "forensics": deep_forensics
     }
