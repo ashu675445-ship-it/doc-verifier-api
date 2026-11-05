@@ -10,6 +10,7 @@ import numpy as np
 
 app = FastAPI()
 
+# Definite Blacklisted Tools (Editing/Tampering Software)
 STRICT_BLACKLIST = [
     "photoshop", "illustrator", "canva", "gimp", "ilovepdf", "sejda", 
     "pdfescape", "smallpdf", "coreldraw", "inkscape", "pixlr", "paint",
@@ -19,38 +20,31 @@ STRICT_BLACKLIST = [
 INDIAN_BANKS_PROFILE = {
     "State Bank of India (SBI)": {
         "keywords": ["STATE BANK OF INDIA", "SBI CARD", "ONLINESBI", "SBIN0"],
-        "ifsc_prefix": "SBIN",
-        "standard_fonts": ["arial", "helvetica", "times", "calibri"]
+        "ifsc_prefix": "SBIN"
     },
     "HDFC Bank": {
         "keywords": ["HDFC BANK", "HDFCBANK.COM", "HDFC00"],
-        "ifsc_prefix": "HDFC",
-        "standard_fonts": ["arial", "helvetica", "verdana", "calibri"]
+        "ifsc_prefix": "HDFC"
     },
     "ICICI Bank": {
         "keywords": ["ICICI BANK", "ICICIBANK.COM", "ICIC00"],
-        "ifsc_prefix": "ICIC",
-        "standard_fonts": ["arial", "helvetica", "tahoma"]
+        "ifsc_prefix": "ICIC"
     },
     "Axis Bank": {
         "keywords": ["AXIS BANK", "AXISBANK.COM", "UTIB00"],
-        "ifsc_prefix": "UTIB",
-        "standard_fonts": ["arial", "helvetica", "calibri"]
+        "ifsc_prefix": "UTIB"
     },
     "Punjab National Bank (PNB)": {
         "keywords": ["PUNJAB NATIONAL BANK", "PNBINDIA", "PUNB0"],
-        "ifsc_prefix": "PUNB",
-        "standard_fonts": ["arial", "times"]
+        "ifsc_prefix": "PUNB"
     },
     "Bank of Baroda (BOB)": {
         "keywords": ["BANK OF BARODA", "BOBDIGI", "BARB0"],
-        "ifsc_prefix": "BARB",
-        "standard_fonts": ["arial", "helvetica"]
+        "ifsc_prefix": "BARB"
     },
     "Kotak Mahindra Bank": {
         "keywords": ["KOTAK MAHINDRA", "KOTAK BANK", "KKBK0"],
-        "ifsc_prefix": "KKBK",
-        "standard_fonts": ["arial", "calibri"]
+        "ifsc_prefix": "KKBK"
     }
 }
 
@@ -62,105 +56,43 @@ class DocPayload(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "Boss Level Alignment & Forensic Engine Live!"}
+    return {"status": "Calibrated Forensic Engine Live!"}
 
-def audit_page_geometry_and_alignment(doc):
+def audit_page_geometry_safe(doc):
     """
-    Har page ke har ek text block, line aur word ka alignment, 
-    font size variance aur vertical offset check karta hai.
+    Calibrated Alignment Check:
+    Normal bold/regular mix ya table gaps ko ignore karega.
+    Sirf extreme abnormal floating text ya physical overlap ko hi catch karega.
     """
     alignment_anomalies = []
-    font_anomalies = []
     
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
-        # Detailed block, line, span aur character analysis
-        text_page = page.get_text("words")  # List of (x0, y0, x1, y1, "word", block_no, line_no, word_no)
-        blocks = page.get_text("dict")["blocks"]
+        text_page = page.get_text("words")  # (x0, y0, x1, y1, "word", block_no, line_no, word_no)
         
-        # 1. Text Line Y-Axis Alignment Check
-        line_baselines = {}
-        for b in blocks:
-            if "lines" in b:
-                for l in b["lines"]:
-                    bbox = l["bbox"]
-                    spans = l["spans"]
-                    line_y = round(bbox[1], 1)
-                    
-                    # Check multiple font sizes in single text line (Common sign of edited word)
-                    if len(spans) > 1:
-                        sizes = [round(s["size"], 1) for s in spans if s["text"].strip()]
-                        fonts = [s["font"].lower() for s in spans if s["text"].strip()]
-                        
-                        if len(set(sizes)) > 2:
-                            sample_text = " ".join([s["text"] for s in spans])[:35]
-                            alignment_anomalies.append(
-                                f"Page {page_num + 1}: Abnormal Font Size Shift ({sizes}) inside line -> '{sample_text}...'"
-                            )
-                        
-                        # Check font family change mid-line (e.g. Arial se Times new roman mid-line)
-                        clean_fonts = [f.split('+')[-1] for f in fonts] # Remove subset prefix
-                        if len(set(clean_fonts)) > 1:
-                            sample_text = " ".join([s["text"] for s in spans])[:35]
-                            font_anomalies.append(
-                                f"Page {page_num + 1}: Font Family Hijack detected inside line -> '{sample_text}'"
-                            )
-
-        # 2. Text Span Coordinate Skewness Check (Words overlapping or displaced)
+        # Word Overlap check with realistic negative threshold
         for i in range(len(text_page) - 1):
             w1 = text_page[i]
             w2 = text_page[i+1]
-            # Same block & same line
+            
+            # Same line and block
             if w1[5] == w2[5] and w1[6] == w2[6]:
-                # Negative gap or unnatural letter collision (Pasted text defect)
                 horizontal_gap = w2[0] - w1[2]
-                if horizontal_gap < -2.0:
+                # Normal printing me -1 ya -2px bounding box overlap possible hota hai.
+                # Agar -8px se zyada overlap hai, tabhi real text overwrite hota hai.
+                if horizontal_gap < -8.0 and len(w1[4]) > 1 and len(w2[4]) > 1:
                     alignment_anomalies.append(
-                        f"Page {page_num + 1}: Text Collision / Overlap between '{w1[4]}' and '{w2[4]}'"
+                        f"Page {page_num + 1}: Unnatural Word Overwrite detected between '{w1[4]}' and '{w2[4]}'"
                     )
-                # Unnatural Vertical tilt inside same line
+                
+                # Extreme vertical drift (same line hone ke baad 12px se zyada dislocation)
                 vertical_drift = abs(w1[1] - w2[1])
-                if vertical_drift > 4.5:
+                if vertical_drift > 14.0:
                     alignment_anomalies.append(
-                        f"Page {page_num + 1}: Baseline Vertical Skew of {round(vertical_drift, 1)}px at word '{w2[4]}'"
+                        f"Page {page_num + 1}: Floating Text Anomaly at word '{w2[4]}'"
                     )
 
-    return alignment_anomalies[:6], font_anomalies[:4]
-
-def verify_bank_structural_rules(text, matched_bank, fonts_found):
-    """
-    Original bank ke structure se match karta hai (Font, IFSC, Balance flow).
-    """
-    bank_flags = []
-    profile = INDIAN_BANKS_PROFILE.get(matched_bank)
-    if not profile:
-        return bank_flags
-
-    # Font Verification against Bank Master Standard
-    clean_found_fonts = [f.lower().split('+')[-1] for f in fonts_found]
-    approved_fonts = profile["standard_fonts"]
-    
-    font_match = False
-    for f in clean_found_fonts:
-        for app_f in approved_fonts:
-            if app_f in f:
-                font_match = True
-                break
-
-    if not font_match and len(fonts_found) > 0:
-        bank_flags.append(
-            f"Bank Template Anomaly: {matched_bank} official generator typically uses {', '.join(approved_fonts).upper()}, but document contains unauthorized font family."
-        )
-
-    # Balance Column Alignment Pattern
-    amount_rows = re.findall(r'(\d{1,3}(?:,\d{3})*(?:\.\d{2}))', text)
-    if len(amount_rows) >= 5:
-        # Check decimals uniformity (Official bank statements always have .00 format)
-        odd_decimals = [a for a in amount_rows if len(a.split('.')[-1]) != 2]
-        if len(odd_decimals) > 0:
-            bank_flags.append("Financial Integrity Error: Non-standard decimal precision found in amount column.")
-
-    return bank_flags
+    return alignment_anomalies[:3]
 
 def identify_bank_accurately(text):
     bank_scores = {}
@@ -205,8 +137,7 @@ def classify_document_advanced(text_content):
             "type": f"{exact_bank} Statement",
             "authority": "Reserve Bank of India (Regulated Bank)",
             "identifier": f"IFSC: {ifsc_info} | {financial_txns} Ledger Txns",
-            "is_bank": True,
-            "bank_name": exact_bank
+            "is_bank": True
         }
 
     pan_match = re.search(r'\b[A-Z]{5}[0-9]{4}[A-Z]\b', text)
@@ -243,7 +174,7 @@ def classify_document_advanced(text_content):
         "is_bank": False
     }
 
-def detect_pixel_patch_tamper(image_bytes):
+def detect_pixel_patch_tamper_safe(image_bytes):
     flags = []
     try:
         pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -255,7 +186,7 @@ def detect_pixel_patch_tamper(image_bytes):
         diff_np = np.array(diff)
         
         h, w, _ = diff_np.shape
-        block_size = 16
+        block_size = 32
         peaks = []
         for y in range(0, h, block_size):
             for x in range(0, w, block_size):
@@ -266,8 +197,9 @@ def detect_pixel_patch_tamper(image_bytes):
             mean_peak = np.mean(peaks)
             max_peak = np.max(peaks)
             ratio = max_peak / (mean_peak + 1e-5)
-            if ratio > 8.5 and max_peak > 35:
-                flags.append("Pixel Heatmap Tamper: Local compression spike detected (Manual edit/patch).")
+            # High threshold taaki normal logos ya dark borders ko edit na bole
+            if ratio > 11.0 and max_peak > 55:
+                flags.append("High-Confidence Pixel Compression Anomaly (Cut/Paste editing detected).")
     except Exception:
         pass
     return flags
@@ -277,27 +209,25 @@ def verify_document(payload: DocPayload):
     file_bytes = base64.b64decode(payload.base64File)
     is_pdf = "pdf" in payload.mimeType.lower() or payload.fileName.lower().endswith(".pdf")
     
-    flags = []
+    critical_flags = []
     alignment_issues = []
-    font_issues = []
     extracted_text = ""
     deep_forensics = {}
 
     raw_stream = file_bytes.decode('latin1', errors='ignore').lower()
 
-    # Tool checks
+    # Confirmed Tampering Tools in Binary
     for tool in STRICT_BLACKLIST:
         if tool in raw_stream:
-            flags.append(f"Editor Footprint: Created or exported using '{tool.upper()}'.")
+            critical_flags.append(f"Confirmed Tampering Signature: File generated/edited via '{tool.upper()}'.")
 
     if "xmpmm:history" in raw_stream or "stevt:action" in raw_stream:
-        flags.append("Adobe Action Stack: Multiple manual modification sessions found in file binary.")
+        critical_flags.append("Adobe Action History: Document metadata contains saved editing sessions.")
 
     if is_pdf:
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
 
-            # Password & Encryption Handling
             if doc.is_encrypted:
                 if not payload.password:
                     return {
@@ -316,7 +246,7 @@ def verify_document(payload: DocPayload):
 
             meta = doc.metadata or {}
             deep_forensics["pdf_producer"] = meta.get("producer") or "Direct Bank Engine"
-            deep_forensics["creator_app"] = meta.get("creator") or "Core Banking System"
+            deep_forensics["creator_app"] = meta.get("creator") or "Core Enterprise System"
             deep_forensics["page_count"] = len(doc)
             deep_forensics["is_encrypted"] = "Yes (Decrypted)" if doc.is_encrypted else "No (Standard)"
 
@@ -327,47 +257,39 @@ def verify_document(payload: DocPayload):
                 total_fonts.extend([f[3] for f in page.get_fonts()])
                 image_count += len(page.get_images())
 
-            deep_forensics["unique_fonts"] = ", ".join(list(set(total_fonts))[:4]) or "Native Banking Fonts"
+            deep_forensics["unique_fonts"] = ", ".join(list(set(total_fonts))[:3]) or "Native Document Fonts"
             deep_forensics["embedded_images"] = image_count
 
-            # --- GEOMETRIC ALIGNMENT & FONT MATRIX AUDIT ---
-            align_errs, font_errs = audit_page_geometry_and_alignment(doc)
+            # Safe Geometric Alignment Audit
+            align_errs = audit_page_geometry_safe(doc)
             alignment_issues.extend(align_errs)
-            font_issues.extend(font_errs)
 
-            # Flattened scan detection
-            if len(extracted_text.strip()) < 40 and len(doc) > 0 and image_count >= 1:
-                flags.append("Flattened Image Warning: Text layer missing (Document converted to flat image to hide edits).")
+            # Flattened scan detection (Sirf tab jab na text ho aur multiple image chips ho)
+            if len(extracted_text.strip()) < 30 and len(doc) > 0 and image_count >= 1:
+                critical_flags.append("Flattened Image Warning: Bank statement text layer removed (Converted into flat raster).")
 
-            # Micro ELA check
+            # Micro pixel check on first page (Safe threshold)
             if len(doc) > 0:
                 pix = doc.load_page(0).get_pixmap(dpi=150)
-                flags.extend(detect_pixel_patch_tamper(pix.tobytes("jpeg")))
+                critical_flags.extend(detect_pixel_patch_tamper_safe(pix.tobytes("jpeg")))
 
         except Exception as e:
-            flags.append(f"PDF Decryption or Syntax Error: {str(e)}")
+            critical_flags.append(f"PDF Decryption or Syntax Error: {str(e)}")
     else:
-        flags.extend(detect_pixel_patch_tamper(file_bytes))
+        critical_flags.extend(detect_pixel_patch_tamper_safe(file_bytes))
         deep_forensics["pdf_producer"] = "Digital Image / Scan"
         deep_forensics["creator_app"] = "Flat Graphic File"
         deep_forensics["page_count"] = 1
         deep_forensics["is_encrypted"] = "No (Raw Image)"
 
-    # Document Classification
     classification = classify_document_advanced(extracted_text)
 
-    # Bank Template Rule-Engine
-    if classification.get("is_bank"):
-        bank_structure_flags = verify_bank_structural_rules(
-            extracted_text, 
-            classification["bank_name"], 
-            deep_forensics.get("unique_fonts", "").split(", ")
-        )
-        flags.extend(bank_structure_flags)
-
-    # Total Tampering Aggregation
-    all_anomalies = list(set(flags + alignment_issues + font_issues))
-    is_suspicious = len(all_anomalies) > 0
+    # FINAL TAMPERING VERDICT LOGIC:
+    # 1. Agar critical tool footprint mila -> Definitely TAMPERED
+    # 2. Agar alignment me real physical overlap mila -> TAMPERED
+    # 3. Normal font variation par fake nahi bolega
+    is_suspicious = len(critical_flags) > 0 or len(alignment_issues) > 0
+    all_flags = list(set(critical_flags + alignment_issues))
 
     return {
         "is_encrypted": False,
@@ -375,8 +297,7 @@ def verify_document(payload: DocPayload):
         "is_suspicious": is_suspicious,
         "verdict": "TAMPERED / ALTERED" if is_suspicious else "GENUINE / VERIFIED",
         "classification": classification,
-        "flags": all_anomalies,
+        "flags": all_flags,
         "alignment_errors": alignment_issues,
-        "font_errors": font_issues,
         "forensics": deep_forensics
     }
