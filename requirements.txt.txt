@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pymupdf
+pillow
+pydantic
+opencv-python-headless
+numpy
